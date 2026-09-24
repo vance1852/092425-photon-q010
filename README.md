@@ -66,6 +66,13 @@ PYTHONPATH=src python3 -m photon_fab.api --database photon.sqlite3 --port 8080
 
 HTTP 健康检查为 `GET /health`，登录、批次、测量和分析请求均支持 JSON；服务不访问外部网络，可在单个 Linux 应用容器中完成验收。
 
+响应度（R = I/P）计算的单位约定：
+
+- 光电流输入单位固定为 `mA`；光功率单位必须在请求中显式声明 `power_unit`：`"uw"`（微瓦）或 `"mw"`（毫瓦），1 mW = 1000 µW，结果统一返回 `A/W`；
+- 当前换算版本为 `photon-power-units-v1`，可经 `GET /responsivity/units` 查询；每条响应度记录固化提交时的数值、单位、换算版本和结果值；
+- 零功率、负功率及 NaN/无穷大输入返回 400，不会产生无穷大结果；
+- `POST /lots/{lot_id}/responsivity/reanalyze` 以只读方式按指定版本重新分析，冻结的历史值与重算值并列返回并标注差异，原始记录永不改写；历史版本 `legacy-mw-v0` 对应旧的"一律按毫瓦解释"行为。
+
 ## HTTP 服务
 
 ```bash

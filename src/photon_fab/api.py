@@ -23,9 +23,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             return self._json(200, {"status": "ok", "service": "photon-fab"})
+        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
+        if self.path == "/responsivity/units":
+            try:
+                return self._json(200, self.service.responsivity_units(token))
+            except Exception as exc:
+                return self._json(400, {"error": str(exc)})
+        if self.path.startswith("/lots/") and self.path.endswith("/responsivity"):
+            try:
+                lot_id = self.path.split("/")[2]
+                return self._json(200, self.service.list_responsivity_measurements(token, lot_id))
+            except Exception as exc:
+                return self._json(400, {"error": str(exc)})
         if self.path.startswith("/lots/"):
             try:
-                token = self.headers.get("Authorization", "").removeprefix("Bearer ")
                 return self._json(200, self.service.get_lot(token, self.path.split("/", 2)[2]))
             except Exception as exc:
                 return self._json(400, {"error": str(exc)})
@@ -39,6 +50,20 @@ class Handler(BaseHTTPRequestHandler):
             token = self.headers.get("Authorization", "").removeprefix("Bearer ")
             if self.path == "/lots":
                 return self._json(201, self.service.create_lot(token, body["lot_id"], body["product"], body["process_rev"], body["wafer_count"]))
+            if self.path.startswith("/lots/") and self.path.endswith("/responsivity"):
+                lot_id = self.path.split("/")[2]
+                # 光功率单位必须显式声明：'uw'（微瓦）或 'mw'（毫瓦）。
+                # 缺字段以 .get 透传到服务层校验，返回 400 而不是 lot-not-found。
+                return self._json(201, self.service.add_responsivity_measurement(
+                    token, lot_id, body.get("photocurrent_ma"), body.get("optical_power"),
+                    body.get("power_unit"), body.get("instrument", ""),
+                    body.get("conversion_version", "photon-power-units-v1"),
+                ))
+            if self.path.startswith("/lots/") and self.path.endswith("/responsivity/reanalyze"):
+                lot_id = self.path.split("/")[2]
+                return self._json(200, self.service.reanalyze_responsivity(
+                    token, lot_id, body.get("conversion_version", "photon-power-units-v1")
+                ))
             if self.path.startswith("/lots/") and self.path.endswith("/measurements"):
                 lot_id = self.path.split("/")[2]
                 return self._json(201, self.service.add_measurement(token, lot_id, body["wavelength_nm"], body["response"], body.get("noise", 0.0), body["instrument"]))
@@ -47,6 +72,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "not found"})
         except PermissionError as exc:
             return self._json(403, {"error": str(exc)})
+        except KeyError as exc:
+            return self._json(404, {"error": f"lot not found: {exc.args[0]}"})
         except Exception as exc:
             return self._json(400, {"error": str(exc)})
 

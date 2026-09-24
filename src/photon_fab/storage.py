@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS measurements(
  wavelength_nm REAL NOT NULL, response REAL NOT NULL, noise REAL NOT NULL,
  instrument TEXT NOT NULL, operator TEXT NOT NULL, measured_at TEXT NOT NULL,
  UNIQUE(lot_id,measurement_id));
+CREATE TABLE IF NOT EXISTS responsivity_measurements(
+ measurement_id TEXT PRIMARY KEY, lot_id TEXT NOT NULL REFERENCES chip_lots(lot_id),
+ photocurrent_ma REAL NOT NULL, optical_power REAL NOT NULL, power_unit TEXT NOT NULL,
+ conversion_version TEXT NOT NULL, responsivity_aw REAL NOT NULL,
+ instrument TEXT NOT NULL, operator TEXT NOT NULL, measured_at TEXT NOT NULL,
+ UNIQUE(lot_id,measurement_id));
 CREATE TABLE IF NOT EXISTS lot_events(
  event_id INTEGER PRIMARY KEY AUTOINCREMENT, lot_id TEXT NOT NULL,
  event_type TEXT NOT NULL, actor TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -33,7 +39,9 @@ def utcnow() -> str:
 
 
 def connect(path: str = ":memory:") -> sqlite3.Connection:
-    db = sqlite3.connect(path)
+    # API 由 ThreadingHTTPServer 承载，请求在工作线程中复用同一连接；
+    # 写操作均通过 BEGIN IMMEDIATE 事务串行化。
+    db = sqlite3.connect(path, check_same_thread=False)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
     db.executescript(SCHEMA)
