@@ -59,12 +59,16 @@ PYTHONPATH=src python3 -m plant_science.acceptance --workspace .
 
 `src/photon_fab/` 提供光电芯片批次、光谱测量、科学计算、质量审批和审计的离线后台。SQLite 保存完整批次生命周期，角色权限覆盖操作员、工程师、质量人员和管理员；峰值波长、噪声 RMS、响应度、置信区间及良率计算均为确定性本地算法。
 
+响应度计算 `R = I / P` 要求显式声明单位：电流支持 `ma`/`ua`（含 `µa`、`μa`），光功率支持 `mw`/`uw`（含 `µw`、`μw`），内部按固定系数换算到 mA、mW，结果单位为 `mA/mW`（数值等价 A/W）。换算规则由 `photon_fab.units.CONVERSION_VERSION`（当前 `unit-conversion-v1`）标识，并随每次结果返回；零功率、负功率及 NaN/Infinity 输入一律拒绝（HTTP 400），不会产生无穷大。测量记录保存原始数值与单位声明；修复前写入、单位列为 NULL 的旧记录在重新分析时进入 `responsivity_excluded` 并以 `legacy_measurements_without_units: true` 显式标识，不会被静默按毫瓦解读或改写。分析结果按输入指纹去重写入 `analysis_runs`：相同输入重新分析重放同一 `run_id`（`replayed: true`），输入变化则新增快照，历史快照和测量行永不覆盖。
+
+`POST /responsivity` 请求体形如 `{"photocurrent": 0.4, "optical_power": 500, "current_unit": "ma", "power_unit": "uw"}`（单位缺省为 `ma`/`mw`），响应包含 `responsivity`、`result_unit`、输入单位、换算后的 `current_ma`/`power_mw` 以及 `conversion_version`。批次测量端点 `POST /lots/<id>/measurements` 同样接受 `photocurrent`/`optical_power` 与单位字段（电流和功率必须成对提供），`POST /lots/<id>/analysis` 的结果中按条返回带单位版本的响应度及被排除记录的原因。
+
 ```bash
 PYTHONPATH=src python3 -m photon_fab.acceptance
 PYTHONPATH=src python3 -m photon_fab.api --database photon.sqlite3 --port 8080
 ```
 
-HTTP 健康检查为 `GET /health`，登录、批次、测量和分析请求均支持 JSON；服务不访问外部网络，可在单个 Linux 应用容器中完成验收。
+HTTP 健康检查为 `GET /health`，登录、批次、测量、响应度和分析请求均支持 JSON；服务不访问外部网络，可在单个 Linux 应用容器中完成验收。
 
 ## HTTP 服务
 

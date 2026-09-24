@@ -39,9 +39,22 @@ class Handler(BaseHTTPRequestHandler):
             token = self.headers.get("Authorization", "").removeprefix("Bearer ")
             if self.path == "/lots":
                 return self._json(201, self.service.create_lot(token, body["lot_id"], body["product"], body["process_rev"], body["wafer_count"]))
+            if self.path == "/responsivity":
+                return self._json(200, self.service.compute_responsivity(
+                    token,
+                    body["photocurrent"],
+                    body["optical_power"],
+                    body.get("current_unit", "ma"),
+                    body.get("power_unit", "mw"),
+                ))
             if self.path.startswith("/lots/") and self.path.endswith("/measurements"):
                 lot_id = self.path.split("/")[2]
-                return self._json(201, self.service.add_measurement(token, lot_id, body["wavelength_nm"], body["response"], body.get("noise", 0.0), body["instrument"]))
+                return self._json(201, self.service.add_measurement(
+                    token, lot_id, body["wavelength_nm"], body["response"],
+                    body.get("noise", 0.0), body["instrument"],
+                    body.get("photocurrent"), body.get("optical_power"),
+                    body.get("current_unit", "ma"), body.get("power_unit", "mw"),
+                ))
             if self.path.startswith("/lots/") and self.path.endswith("/analysis"):
                 return self._json(200, self.service.analyze(token, self.path.split("/")[2]))
             return self._json(404, {"error": "not found"})

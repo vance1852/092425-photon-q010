@@ -7,6 +7,32 @@ import statistics
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
+from .units import (
+    CONVERSION_VERSION,
+    MILLIAMP,
+    MILLIWATT,
+    current_to_ma,
+    normalize_unit,
+    power_to_mw,
+)
+
+
+@dataclass(frozen=True)
+class ResponsivityResult:
+    """光电响应度 R = I / P。
+
+    result_unit 为输出单位 (mA/mW)；current_unit/power_unit 为输入声明单位；
+    conversion_version 记录换算规则版本，旧测量重新分析时据此区分。
+    """
+
+    responsivity: float
+    result_unit: str
+    current_unit: str
+    power_unit: str
+    current_ma: float
+    power_mw: float
+    conversion_version: str
+
 
 @dataclass(frozen=True)
 class SpectrumSummary:
@@ -55,7 +81,32 @@ def yield_rate(total: int, passed: int, rejected: int = 0) -> dict[str, float]:
     return {"yield": passed / total, "reject_rate": rejected / total, "unknown_rate": (total - passed - rejected) / total}
 
 
-def responsivity(current_ma: float, optical_power_mw: float) -> float:
-    if optical_power_mw <= 0:
-        raise ValueError("optical power must be positive")
-    return current_ma / optical_power_mw
+def responsivity(
+    current: float,
+    optical_power: float,
+    current_unit: str = MILLIAMP,
+    power_unit: str = MILLIWATT,
+) -> ResponsivityResult:
+    """计算光电响应度 R = I / P，结果以 mA/mW（等价 A/W）表示。
+
+    输入电流和光功率必须带显式单位声明，先按 :mod:`photon_fab.units`
+    的固定系数换算到 mA、mW 后再做除法。光功率为零或负值没有物理意义，
+    抛出 ValueError 而不是返回 +/-Infinity。
+    """
+    current_ma = current_to_ma(current, current_unit)
+    power_mw = power_to_mw(optical_power, power_unit)
+    if power_mw <= 0.0:
+        # 在换算后校验，保证 uW 与 mW 口径一致，并拦截带符号零。
+        raise ValueError("optical power must be strictly positive after unit conversion")
+    value = current_ma / power_mw
+    if not math.isfinite(value):
+        raise ValueError("responsivity result is not finite")
+    return ResponsivityResult(
+        responsivity=value,
+        result_unit="mA/mW",
+        current_unit=normalize_unit(current_unit),
+        power_unit=normalize_unit(power_unit),
+        current_ma=current_ma,
+        power_mw=power_mw,
+        conversion_version=CONVERSION_VERSION,
+    )
